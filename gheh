@@ -1,0 +1,337 @@
+stop_requested = False
+current_process = None
+
+def get_projects_from_path():
+    """Get projects from the CapCut directory"""
+    capcut_path = os.getenv("LOCALAPPDATA") + r"\CapCut"
+    projects_path = capcut_path + r"\User Data\Projects\com.lveditor.draft"
+    
+    if not os.path.exists(projects_path):
+        print(f"Error: Projects path not found at {projects_path}")
+        return [], ""
+    
+    # Get valid projects
+    all_projects = [p for p in os.listdir(projects_path) 
+                    if p not in ['.recycle_bin', 'root_meta_info.json']]
+    # Tìm các dự án cần đổi tên do xung đột prefix
+    projects_to_rename = []  # Lưu danh sách các dự án cần đổi tên (là prefix của dự án khác)
+    
+    # Sắp xếp dự án theo độ dài (ngắn đến dài) để kiểm tra prefix
+    sorted_projects = sorted(all_projects, key=len)
+    
+    # Kiểm tra xem có dự án nào là prefix của dự án khác không
+    for i, proj1 in enumerate(sorted_projects):
+        for proj2 in sorted_projects[i+1:]:
+            # Kiểm tra nếu proj1 là prefix của proj2 (không phân biệt hoa thường)
+            if proj2.lower().startswith(proj1.lower()):
+                projects_to_rename.append(proj1)
+                break
+    
+    # In thông tin về các dự án cần đổi tên
+    if projects_to_rename:
+        print(f"Cần đổi tên {len(projects_to_rename)} dự án để đảm bảo tìm kiếm duy nhất:")
+        for proj in projects_to_rename:
+            print(f"  - {proj}")
+        
+        # Thực hiện đổi tên chỉ các dự án có xung đột
+        projects = []
+        for p in all_projects:
+            if p in projects_to_rename:
+                # Thêm timestamp cho các dự án có xung đột
+                timestamp = int(time.time())
+                new_name = f"{p}_{timestamp}"
+                os.rename(os.path.join(projects_path, p), os.path.join(projects_path, new_name))
+                projects.append(new_name)
+                print(f"Đã đổi tên: {p} -> {new_name}")
+            else:
+                # Giữ nguyên tên các dự án không có xung đột
+                projects.append(p)
+    else:
+        print("Tất cả dự án đã đảm bảo tìm kiếm duy nhất, không cần đổi tên.")
+        projects = all_projects
+    return all_projects, projects_path
+
+def select_folder(folder_var):
+    """Open folder selection dialog and update the folder path variable"""
+    folder_path = filedialog.askdirectory(title="Select Video Folder")
+    if folder_path:
+        folder_var.set(folder_path)
+
+def validate_input_format(input_text):
+    """Validate if input follows the key:value format for each line"""
+    if not input_text.strip():
+        return True  # Empty input is valid
+        
+    lines = input_text.strip().split('\n')
+    for line in lines:
+        if not ':' in line:
+            return False
+    return True
+
+def save_settings(folder_var, text_widget, status_var):
+    """Save current settings to a file"""
+    try:
+        input_text = text_widget.get('1.0', tk.END).strip()
+        
+        # Validate input format
+        if not validate_input_format(input_text):
+            status_var.set("Error: Input must follow 'key:value' format on each line")
+            messagebox.showerror("Format Error", "Input must follow 'key:value' format on each line.")
+            return
+        
+        # Create settings dictionary with folder path and input text
+        settings = {
+            'folder_path': folder_var.get(),
+            'input_text': input_text
+        }
+        
+        # Save to JSON file
+        with open('capcut_settings.json', 'w', encoding='utf-8') as f:
+            json.dump(settings, f, ensure_ascii=False, indent=4)
+        
+        status_var.set("Settings saved successfully")
+    except Exception as e:
+        status_var.set(f"Error saving settings: {str(e)}")
+        messagebox.showerror("Error", f"Failed to save settings: {str(e)}")
+
+def load_settings(folder_var, text_widget):
+    """Load settings from file if it exists"""
+    try:
+        if os.path.exists('capcut_settings.json'):
+            with open('capcut_settings.json', 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+                
+            # Load folder path if it exists in settings
+            if 'folder_path' in settings:
+                folder_var.set(settings.get('folder_path', ''))
+            
+            # Load input text if it exists in settings
+            if 'input_text' in settings:
+                text_widget.delete('1.0', tk.END)
+                text_widget.insert('1.0', settings.get('input_text', ''))
+            
+            return True
+        return False
+    except Exception as e:
+        print(f"Error loading settings: {str(e)}")
+        return False
+
+def copy_effect_with_render(status_var, folder_path=None, input_text=None):
+    """Copy effect with rendering"""
+    projects, projects_path = get_projects_from_path()
+    if not projects:
+        status_var.set("No projects found")
+        return
+    
+    # Use the folder path and input text
+    status_var.set(f"Copying effect with rendering... Folder: {folder_path}")
+    if input_text:
+        # Handle multi-line text display in a cleaner way for status
+        lines = input_text.split('\n')
+        if len(lines) > 1:
+            status_var.set(f"{status_var.get()}\nInput has {len(lines)} lines")
+        else:
+            status_var.set(f"{status_var.get()}\nInput: {input_text}")
+    
+    # Simulating work
+    for i in range(5):
+        if stop_requested:
+            status_var.set("Process stopped")
+            return
+        time.sleep(1)
+    status_var.set("Copy with rendering completed")
+
+def copy_effect_only(status_var, folder_path=None, input_text=None):
+    """Copy effect without rendering"""
+    projects, projects_path = get_projects_from_path()
+    if not projects:
+        status_var.set("No projects found")
+        return
+    
+    # Use the folder path and input text
+    status_var.set(f"Copying effect only... Folder: {folder_path}, Input: {input_text}")
+    
+    # Simulating work
+    for i in range(5):
+        if stop_requested:
+            status_var.set("Process stopped")
+            return
+        time.sleep(1)
+    status_var.set("Copy effect only completed")
+
+def render_existing_project(status_var, folder_path=None, input_text=None):
+    """Render existing project"""
+    projects, projects_path = get_projects_from_path()
+    if not projects:
+        status_var.set("No projects found")
+        return
+    
+    # Use the folder path and input text
+    status_var.set(f"Rendering existing project... Folder: {folder_path}, Input: {input_text}")
+    
+    # Simulating work
+    for i in range(5):
+        if stop_requested:
+            status_var.set("Process stopped")
+            return
+        time.sleep(1)
+    status_var.set("Rendering completed")
+
+def start_process(option, status_var, folder_var, text_widget):
+    global stop_requested, current_process
+    
+    # Reset stop flag
+    stop_requested = False
+    
+    # Check if a process is already running
+    if current_process and current_process.is_alive():
+        messagebox.showwarning("Warning", "A process is already running!")
+        return
+    
+    # Get folder path and input text
+    folder_path = folder_var.get()
+    input_text = text_widget.get('1.0', tk.END).strip()
+    
+    # Update status
+    status_var.set(f"Starting option {option}...")
+    
+    # Create and start the appropriate thread based on the selected option
+    if option == 1:
+        current_process = threading.Thread(
+            target=copy_effect_with_render, 
+            args=(status_var, folder_path, input_text)
+        )
+    elif option == 2:
+        current_process = threading.Thread(
+            target=copy_effect_only, 
+            args=(status_var, folder_path, input_text)
+        )
+    elif option == 3:
+        current_process = threading.Thread(
+            target=render_existing_project, 
+            args=(status_var, folder_path, input_text)
+        )
+        
+    current_process.daemon = True
+    current_process.start()
+
+def stop_process(status_var):
+    global stop_requested
+    stop_requested = True
+    status_var.set("Stopping process...")
+
+def create_gui():
+    # Create the main window
+    root = tk.Tk()
+    root.title("Coppy Attribute Tool")
+    root.geometry("500x600")  # Increased size for multi-line text box
+    
+    # Create folder selection frame
+    folder_frame = ttk.LabelFrame(root, text="Video Folder")
+    folder_frame.pack(padx=10, pady=10, fill="x")
+    
+    folder_var = tk.StringVar()
+    folder_entry = ttk.Entry(folder_frame, textvariable=folder_var, width=50)
+    folder_entry.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+    
+    browse_button = ttk.Button(
+        folder_frame,
+        text="Browse...",
+        command=lambda: select_folder(folder_var)
+    )
+    browse_button.pack(side="right", padx=5, pady=5)
+    
+    # Create multi-line input text frame
+    input_frame = ttk.LabelFrame(root, text="Additional Input (format: key:value)")
+    input_frame.pack(padx=10, pady=5, fill="x")
+    
+    # Text widget for multi-line support
+    text_widget = tk.Text(input_frame, height=5, width=50)
+    text_widget.pack(padx=5, pady=5, fill="x", expand=True)
+    
+    # Add example placeholder text
+    placeholder_text = "example:value\nkey2:value2"
+    text_widget.insert('1.0', placeholder_text)
+    
+    # Function to clear placeholder on first click
+    def clear_placeholder(event):
+        if text_widget.get('1.0', 'end-1c') == placeholder_text:
+            text_widget.delete('1.0', tk.END)
+        text_widget.unbind('<Button-1>', click_binding)
+    
+    click_binding = text_widget.bind('<Button-1>', clear_placeholder)
+    
+    # Add scrollbar for text widget
+    scrollbar = ttk.Scrollbar(input_frame, command=text_widget.yview)
+    scrollbar.pack(side="right", fill="y")
+    text_widget.config(yscrollcommand=scrollbar.set)
+    
+    # Create a frame for the options
+    options_frame = ttk.LabelFrame(root, text="Options")
+    options_frame.pack(padx=10, pady=5, fill="both", expand=True)
+    
+    # Create variable to store the selected option
+    selected_option = tk.IntVar(value=1)
+    
+    # Create radio buttons
+    ttk.Radiobutton(
+        options_frame, 
+        text="Copy effect with rendering", 
+        variable=selected_option, 
+        value=1
+    ).pack(anchor="w", padx=10, pady=5)
+    
+    ttk.Radiobutton(
+        options_frame, 
+        text="Only copy effect without rendering", 
+        variable=selected_option, 
+        value=2
+    ).pack(anchor="w", padx=10, pady=5)
+    
+    ttk.Radiobutton(
+        options_frame, 
+        text="Render existing project", 
+        variable=selected_option, 
+        value=3
+    ).pack(anchor="w", padx=10, pady=5)
+    
+    # Create status label
+    status_var = tk.StringVar(value="Ready")
+    status_label = ttk.Label(root, textvariable=status_var)
+    status_label.pack(pady=5)
+    
+    # Create buttons frame
+    buttons_frame = ttk.Frame(root)
+    buttons_frame.pack(padx=10, pady=10, fill="x")
+    
+    # Create Start and Stop buttons
+    start_button = ttk.Button(
+        buttons_frame, 
+        text="Start", 
+        command=lambda: start_process(selected_option.get(), status_var, folder_var, text_widget)
+    )
+    start_button.pack(side="left", padx=5, expand=True, fill="x")
+    
+    stop_button = ttk.Button(
+        buttons_frame, 
+        text="Stop", 
+        command=lambda: stop_process(status_var)
+    )
+    stop_button.pack(side="left", padx=5, expand=True, fill="x")
+    
+    save_button = ttk.Button(
+        buttons_frame,
+        text="Save Settings",
+        command=lambda: save_settings(folder_var, text_widget, status_var)
+    )
+    save_button.pack(side="left", padx=5, expand=True, fill="x")
+    
+    # Load settings if available
+    load_settings(folder_var, text_widget)
+    
+    return root, status_var, folder_var, text_widget
+
+# Main entry point
+if __name__ == "__main__":
+    root, *_ = create_gui()
+    root.mainloop()
