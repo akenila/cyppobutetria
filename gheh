@@ -1,6 +1,204 @@
 stop_requested = False
 current_process = None
 
+
+def export_selected_projects(status_var, selected_projects):
+    """Export selected projects one by one with backup management"""
+    if not selected_projects:
+        status_var.set("No projects selected for export")
+        return
+        
+    # Get projects path
+    _, projects_path = get_projects_from_path()
+    if not projects_path:
+        status_var.set("Projects path not found")
+        return
+        
+    # Create backup folder if it doesn't exist
+    backup_folder = os.path.join(os.path.dirname(projects_path), "project_backup")
+    if not os.path.exists(backup_folder):
+        os.makedirs(backup_folder)
+        status_var.set(f"Created backup folder: {backup_folder}")
+    
+    try:
+        # Move all projects to backup folder first
+        status_var.set("Moving all projects to backup folder...")
+        all_projects = [p for p in os.listdir(projects_path) 
+                       if p not in ['.recycle_bin', 'root_meta_info.json']]
+        
+        for project in all_projects:
+            project_path = os.path.join(projects_path, project)
+            backup_path = os.path.join(backup_folder, project)
+            
+            # Skip if project already in backup
+            if os.path.exists(backup_path):
+                continue
+                
+            # Move project to backup
+            if os.path.exists(project_path):
+                shutil.move(project_path, backup_path)
+        
+        status_var.set(f"Moved {len(all_projects)} projects to backup")
+        
+        # Process each selected project
+        processed = 0
+        for project in selected_projects:
+            if stop_requested:
+                status_var.set("Process stopped")
+                break
+                
+            status_var.set(f"{status_var.get()}\nProcessing project: {project}")
+            
+            # Move the project from backup to main folder
+            backup_path = os.path.join(backup_folder, project)
+            project_path = os.path.join(projects_path, project)
+            
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, project_path)
+                status_var.set(f"{status_var.get()}\nMoved {project} to main folder")
+                
+                # Simulate exporting video (placeholder for your actual code)
+                export_video(status_var, project)
+                
+                # Move the project back to backup after export
+                if os.path.exists(project_path):
+                    shutil.move(project_path, backup_path)
+                    status_var.set(f"{status_var.get()}\nMoved {project} back to backup")
+                
+                processed += 1
+            else:
+                status_var.set(f"{status_var.get()}\nProject not found in backup: {project}")
+        
+        # After all exports, move all projects back to main folder
+        status_var.set(f"{status_var.get()}\nMoving all projects back to main folder...")
+        backup_projects = os.listdir(backup_folder)
+        
+        for project in backup_projects:
+            backup_path = os.path.join(backup_folder, project)
+            project_path = os.path.join(projects_path, project)
+            
+            # Move project back to main folder
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, project_path)
+        
+        status_var.set(f"{status_var.get()}\nCompleted: {processed} projects exported")
+        
+    except Exception as e:
+        status_var.set(f"Error during export: {str(e)}")
+
+def export_video(status_var, project):
+    """Placeholder function for exporting video from a project"""
+    status_var.set(f"{status_var.get()}\nExporting video for {project}...")
+    
+    # Simulate export process
+    for i in range(3):
+        if stop_requested:
+            status_var.set(f"{status_var.get()}\nExport stopped")
+            return
+        time.sleep(1)
+        status_var.set(f"{status_var.get()}\nExport progress: {(i+1)*33}%")
+    
+    status_var.set(f"{status_var.get()}\nExport completed for {project}")
+
+def create_project_selection_window(parent, status_var):
+    """Create a window with checkboxes to select projects for export"""
+    # Get list of projects
+    projects, _ = get_projects_from_path()
+    if not projects:
+        messagebox.showinfo("Info", "No projects found")
+        return
+    
+    # Create a new window
+    selection_window = tk.Toplevel(parent)
+    selection_window.title("Select Projects to Export")
+    selection_window.geometry("500x500")
+    
+    # Create a frame with scrollbar
+    frame = ttk.Frame(selection_window)
+    frame.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    canvas = tk.Canvas(frame)
+    scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+    
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+    
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+    
+    # Create checkboxes for each project
+    project_vars = {}
+    
+    # Add "Select All" checkbox
+    select_all_var = tk.BooleanVar(value=False)
+    
+    def toggle_all():
+        """Toggle all checkboxes based on select all checkbox"""
+        for var in project_vars.values():
+            var.set(select_all_var.get())
+    
+    select_all_cb = ttk.Checkbutton(
+        scrollable_frame, 
+        text="Select All",
+        variable=select_all_var,
+        command=toggle_all
+    )
+    select_all_cb.grid(row=0, column=0, sticky="w", padx=5, pady=5)
+    
+    # Add project checkboxes
+    for i, project in enumerate(projects, 1):
+        var = tk.BooleanVar(value=False)
+        project_vars[project] = var
+        
+        cb = ttk.Checkbutton(
+            scrollable_frame,
+            text=project,
+            variable=var
+        )
+        cb.grid(row=i, column=0, sticky="w", padx=5, pady=2)
+    
+    # Add export button
+    def start_export():
+        """Start exporting selected projects"""
+        selected = [project for project, var in project_vars.items() if var.get()]
+        
+        if not selected:
+            messagebox.showinfo("Info", "No projects selected")
+            return
+            
+        selection_window.destroy()
+        
+        # Start export process in a thread
+        global current_process, stop_requested
+        stop_requested = False
+        
+        status_var.set(f"Starting export for {len(selected)} projects...")
+        
+        current_process = threading.Thread(
+            target=export_selected_projects,
+            args=(status_var, selected)
+        )
+        current_process.daemon = True
+        current_process.start()
+    
+    ttk.Button(
+        selection_window,
+        text="Export Selected Projects",
+        command=start_export
+    ).pack(pady=10)
+    
+    ttk.Button(
+        selection_window,
+        text="Cancel",
+        command=selection_window.destroy
+    ).pack(pady=5)
+
 def get_projects_from_path():
     """Get projects from the CapCut directory"""
     capcut_path = os.getenv("LOCALAPPDATA") + r"\CapCut"
@@ -10,45 +208,12 @@ def get_projects_from_path():
         print(f"Error: Projects path not found at {projects_path}")
         return [], ""
     
-    # Get valid projects
+    # Get all projects except special folders
     all_projects = [p for p in os.listdir(projects_path) 
                     if p not in ['.recycle_bin', 'root_meta_info.json']]
-    # Tìm các dự án cần đổi tên do xung đột prefix
-    projects_to_rename = []  # Lưu danh sách các dự án cần đổi tên (là prefix của dự án khác)
     
-    # Sắp xếp dự án theo độ dài (ngắn đến dài) để kiểm tra prefix
-    sorted_projects = sorted(all_projects, key=len)
+    print(f"Found {len(all_projects)} projects in {projects_path}")
     
-    # Kiểm tra xem có dự án nào là prefix của dự án khác không
-    for i, proj1 in enumerate(sorted_projects):
-        for proj2 in sorted_projects[i+1:]:
-            # Kiểm tra nếu proj1 là prefix của proj2 (không phân biệt hoa thường)
-            if proj2.lower().startswith(proj1.lower()):
-                projects_to_rename.append(proj1)
-                break
-    
-    # In thông tin về các dự án cần đổi tên
-    if projects_to_rename:
-        print(f"Cần đổi tên {len(projects_to_rename)} dự án để đảm bảo tìm kiếm duy nhất:")
-        for proj in projects_to_rename:
-            print(f"  - {proj}")
-        
-        # Thực hiện đổi tên chỉ các dự án có xung đột
-        projects = []
-        for p in all_projects:
-            if p in projects_to_rename:
-                # Thêm timestamp cho các dự án có xung đột
-                timestamp = int(time.time())
-                new_name = f"{p}_{timestamp}"
-                os.rename(os.path.join(projects_path, p), os.path.join(projects_path, new_name))
-                projects.append(new_name)
-                print(f"Đã đổi tên: {p} -> {new_name}")
-            else:
-                # Giữ nguyên tên các dự án không có xung đột
-                projects.append(p)
-    else:
-        print("Tất cả dự án đã đảm bảo tìm kiếm duy nhất, không cần đổi tên.")
-        projects = all_projects
     return all_projects, projects_path
 
 def select_folder(folder_var):
@@ -123,23 +288,116 @@ def copy_effect_with_render(status_var, folder_path=None, input_text=None):
         status_var.set("No projects found")
         return
     
-    # Use the folder path and input text
-    status_var.set(f"Copying effect with rendering... Folder: {folder_path}")
-    if input_text:
-        # Handle multi-line text display in a cleaner way for status
-        lines = input_text.split('\n')
-        if len(lines) > 1:
-            status_var.set(f"{status_var.get()}\nInput has {len(lines)} lines")
-        else:
-            status_var.set(f"{status_var.get()}\nInput: {input_text}")
+    if not folder_path:
+        status_var.set("No folder path specified")
+        return
+        
+    if not input_text:
+        status_var.set("No input text specified")
+        return
+        
+    status_var.set(f"Copying effect with rendering... Searching videos in: {folder_path}")
     
-    # Simulating work
-    for i in range(5):
+    # Parse key:value pairs from input text
+    pairs = {}
+    for line in input_text.strip().split('\n'):
+        if ':' in line:
+            key, value = line.split(':', 1)
+            pairs[key.strip()] = value.strip()
+    
+    if not pairs:
+        status_var.set("No valid key:value pairs found in input")
+        return
+        
+    # Get list of video files in the specified folder
+    video_files = []
+    if os.path.exists(folder_path):
+        video_files = [f for f in os.listdir(folder_path) 
+                      if f.lower().endswith(('.mp4', '.mov', '.avi'))]
+    
+    if not video_files:
+        status_var.set(f"No video files found in {folder_path}")
+        return
+    
+    processed = 0
+    status_var.set(f"Found {len(video_files)} videos and {len(pairs)} key:value pairs to process")
+    
+    # Process each key:value pair
+    for key, value in pairs.items():
         if stop_requested:
             status_var.set("Process stopped")
             return
-        time.sleep(1)
-    status_var.set("Copy with rendering completed")
+            
+        # Find videos with key in filename
+        matching_videos = [v for v in video_files if key.lower() in v.lower()]
+        
+        # Find project with value name
+        matching_projects = [p for p in projects if value.lower() in p.lower()]
+        
+        if not matching_videos:
+            status_var.set(f"{status_var.get()}\nNo videos found with '{key}' in filename")
+            continue
+            
+        if not matching_projects:
+            status_var.set(f"{status_var.get()}\nNo projects found with name '{value}'")
+            continue
+        
+        # Use the first matching video and project
+        video_path = os.path.join(folder_path, matching_videos[0])
+        project_name = matching_projects[0]
+        
+        try:
+            # Get video information
+            status_var.set(f"{status_var.get()}\nProcessing: '{key}' → '{value}'")
+            video_info = get_video_info(video_path)
+            if not video_info:
+                continue
+                
+            # Load project JSON
+            project_path = os.path.join(projects_path, project_name, "draft_content.json")
+            if not os.path.exists(project_path):
+                status_var.set(f"{status_var.get()}\nProject file not found: {project_path}")
+                continue
+                
+            with open(project_path, 'r', encoding='utf-8') as f:
+                project_data = json.load(f)
+                
+            # Update project with video info (similar to coppy.py)
+            duration = video_info["duration"]
+            width = video_info["width"]
+            height = video_info["height"]
+            
+            # Update project data with new video properties
+            project_data["canvas_config"]["width"] = width
+            project_data["canvas_config"]["height"] = height
+            project_data["duration"] = duration
+            project_data["materials"]["videos"][0]["duration"] = duration
+            project_data["materials"]["videos"][0]["path"] = video_path
+            project_data["materials"]["videos"][0]["width"] = width
+            project_data["materials"]["videos"][0]["height"] = height
+            project_data["materials"]["videos"][0]["name"] = os.path.basename(video_path)
+            project_data["materials"]["videos"][0]["material_name"] = os.path.basename(video_path)
+            
+            # Update segments duration
+            project_data["tracks"][0]["segments"][0]["source_timerange"]["duration"] = duration
+            for track in project_data["tracks"]:
+                if track["segments"] and len(track["segments"]) > 0:
+                    track["segments"][0]["target_timerange"]["duration"] = duration
+            
+            # Save updated project
+            with open(project_path, 'w', encoding='utf-8') as f:
+                json.dump(project_data, f, indent=4, ensure_ascii=False)
+                
+            processed += 1
+            status_var.set(f"{status_var.get()}\nApplied effects to {project_name} with video {os.path.basename(video_path)}")
+            
+            # Add rendering code here for copy_effect_with_render
+            time.sleep(1)  # Simulate rendering time
+            
+        except Exception as e:
+            status_var.set(f"{status_var.get()}\nError processing {key}:{value} - {str(e)}")
+            
+    status_var.set(f"{status_var.get()}\nCompleted: {processed} projects processed with rendering")
 
 def copy_effect_only(status_var, folder_path=None, input_text=None):
     """Copy effect without rendering"""
@@ -148,17 +406,135 @@ def copy_effect_only(status_var, folder_path=None, input_text=None):
         status_var.set("No projects found")
         return
     
-    # Use the folder path and input text
-    status_var.set(f"Copying effect only... Folder: {folder_path}, Input: {input_text}")
+    if not folder_path:
+        status_var.set("No folder path specified")
+        return
+        
+    if not input_text:
+        status_var.set("No input text specified")
+        return
+        
+    status_var.set(f"Copying effect only... Searching videos in: {folder_path}")
     
-    # Simulating work
-    for i in range(5):
+    # Parse key:value pairs from input text
+    pairs = {}
+    for line in input_text.strip().split('\n'):
+        if ':' in line:
+            key, value = line.split(':', 1)
+            pairs[key.strip()] = value.strip()
+    
+    if not pairs:
+        status_var.set("No valid key:value pairs found in input")
+        return
+        
+    # Get list of video files in the specified folder
+    video_files = []
+    if os.path.exists(folder_path):
+        video_files = [f for f in os.listdir(folder_path) 
+                      if f.lower().endswith(('.mp4', '.mov', '.avi'))]
+    
+    if not video_files:
+        status_var.set(f"No video files found in {folder_path}")
+        return
+    
+    processed = 0
+    status_var.set(f"Found {len(video_files)} videos and {len(pairs)} key:value pairs to process")
+    
+    # Process each key:value pair
+    for key, value in pairs.items():
         if stop_requested:
             status_var.set("Process stopped")
             return
-        time.sleep(1)
-    status_var.set("Copy effect only completed")
+            
+        # Find videos with key in filename
+        matching_videos = [v for v in video_files if key.lower() in v.lower()]
+        
+        # Find project with value name
+        matching_projects = [p for p in projects if value.lower() in p.lower()]
+        
+        if not matching_videos:
+            status_var.set(f"{status_var.get()}\nNo videos found with '{key}' in filename")
+            continue
+            
+        if not matching_projects:
+            status_var.set(f"{status_var.get()}\nNo projects found with name '{value}'")
+            continue
+        
+        # Use the first matching video and project
+        video_path = os.path.join(folder_path, matching_videos[0])
+        project_name = matching_projects[0]
+        
+        try:
+            # Get video information
+            status_var.set(f"{status_var.get()}\nProcessing: '{key}' → '{value}'")
+            video_info = get_video_info(video_path)
+            if not video_info:
+                continue
+                
+            # Load project JSON
+            project_path = os.path.join(projects_path, project_name, "draft_content.json")
+            if not os.path.exists(project_path):
+                status_var.set(f"{status_var.get()}\nProject file not found: {project_path}")
+                continue
+                
+            with open(project_path, 'r', encoding='utf-8') as f:
+                project_data = json.load(f)
+                
+            # Update project with video info (similar to coppy.py)
+            duration = video_info["duration"]
+            width = video_info["width"]
+            height = video_info["height"]
+            
+            # Update project data with new video properties
+            project_data["canvas_config"]["width"] = width
+            project_data["canvas_config"]["height"] = height
+            project_data["duration"] = duration
+            project_data["materials"]["videos"][0]["duration"] = duration
+            project_data["materials"]["videos"][0]["path"] = video_path
+            project_data["materials"]["videos"][0]["width"] = width
+            project_data["materials"]["videos"][0]["height"] = height
+            project_data["materials"]["videos"][0]["name"] = os.path.basename(video_path)
+            project_data["materials"]["videos"][0]["material_name"] = os.path.basename(video_path)
+            
+            # Update segments duration
+            project_data["tracks"][0]["segments"][0]["source_timerange"]["duration"] = duration
+            for track in project_data["tracks"]:
+                if track["segments"] and len(track["segments"]) > 0:
+                    track["segments"][0]["target_timerange"]["duration"] = duration
+            
+            # Save updated project
+            with open(project_path, 'w', encoding='utf-8') as f:
+                json.dump(project_data, f, indent=4, ensure_ascii=False)
+                
+            processed += 1
+            status_var.set(f"{status_var.get()}\nApplied effects to {project_name} with video {os.path.basename(video_path)}")
+            
+        except Exception as e:
+            status_var.set(f"{status_var.get()}\nError processing {key}:{value} - {str(e)}")
+            
+    status_var.set(f"{status_var.get()}\nCompleted: {processed} projects processed without rendering")
 
+# Add the video info function from coppy.py
+def get_video_info(mp4_path):
+    """Get video information similar to coppy.py"""
+    if not os.path.exists(mp4_path):
+        print(f"Error: File '{mp4_path}' doesn't exist")
+        return None
+    
+    try:
+        clip = VideoFileClip(mp4_path)
+        seconds = clip.duration
+        duration = int(seconds * 1000000)
+        width, height = clip.size
+        return {
+            "width": width,
+            "height": height,
+            "duration": duration,
+        }
+    
+    except Exception as e:
+        print(f"Error processing video file: {e}")
+        return None
 def render_existing_project(status_var, folder_path=None, input_text=None):
     """Render existing project"""
     projects, projects_path = get_projects_from_path()
@@ -224,30 +600,42 @@ def create_gui():
     # Create the main window
     root = tk.Tk()
     root.title("Coppy Attribute Tool")
-    root.geometry("500x600")  # Increased size for multi-line text box
+    root.geometry("750x500")  # Wider and shorter window
     
-    # Create folder selection frame
-    folder_frame = ttk.LabelFrame(root, text="Video Folder")
-    folder_frame.pack(padx=10, pady=10, fill="x")
+    # Create main frame with two columns
+    main_frame = ttk.Frame(root)
+    main_frame.pack(fill="both", expand=True, padx=5, pady=5)
+    
+    # Left column for input controls
+    left_column = ttk.Frame(main_frame)
+    left_column.pack(side="left", fill="both", expand=True, padx=2, pady=2)
+    
+    # Right column for status and output
+    right_column = ttk.Frame(main_frame)
+    right_column.pack(side="right", fill="both", expand=True, padx=2, pady=2)
+    
+    # 1. Folder selection frame (left column)
+    folder_frame = ttk.LabelFrame(left_column, text="Video Folder")
+    folder_frame.pack(padx=5, pady=5, fill="x")
     
     folder_var = tk.StringVar()
-    folder_entry = ttk.Entry(folder_frame, textvariable=folder_var, width=50)
-    folder_entry.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+    folder_entry = ttk.Entry(folder_frame, textvariable=folder_var)
+    folder_entry.pack(side="left", padx=2, pady=2, fill="x", expand=True)
     
     browse_button = ttk.Button(
         folder_frame,
         text="Browse...",
         command=lambda: select_folder(folder_var)
     )
-    browse_button.pack(side="right", padx=5, pady=5)
+    browse_button.pack(side="right", padx=2, pady=2)
     
-    # Create multi-line input text frame
-    input_frame = ttk.LabelFrame(root, text="Additional Input (format: key:value)")
-    input_frame.pack(padx=10, pady=5, fill="x")
+    # 2. Input text frame (left column)
+    input_frame = ttk.LabelFrame(left_column, text="Key:Value Pairs")
+    input_frame.pack(padx=5, pady=5, fill="both", expand=True)
     
     # Text widget for multi-line support
-    text_widget = tk.Text(input_frame, height=5, width=50)
-    text_widget.pack(padx=5, pady=5, fill="x", expand=True)
+    text_widget = tk.Text(input_frame, height=8, width=40)
+    text_widget.pack(side="left", padx=2, pady=2, fill="both", expand=True)
     
     # Add example placeholder text
     placeholder_text = "example:value\nkey2:value2"
@@ -262,75 +650,99 @@ def create_gui():
     click_binding = text_widget.bind('<Button-1>', clear_placeholder)
     
     # Add scrollbar for text widget
-    scrollbar = ttk.Scrollbar(input_frame, command=text_widget.yview)
-    scrollbar.pack(side="right", fill="y")
-    text_widget.config(yscrollcommand=scrollbar.set)
+    text_scrollbar = ttk.Scrollbar(input_frame, command=text_widget.yview)
+    text_scrollbar.pack(side="right", fill="y")
+    text_widget.config(yscrollcommand=text_scrollbar.set)
     
-    # Create a frame for the options
-    options_frame = ttk.LabelFrame(root, text="Options")
-    options_frame.pack(padx=10, pady=5, fill="both", expand=True)
+    # 3. Options frame (left column)
+    options_frame = ttk.LabelFrame(left_column, text="Options")
+    options_frame.pack(padx=5, pady=5, fill="x")
     
     # Create variable to store the selected option
     selected_option = tk.IntVar(value=1)
     
-    # Create radio buttons
+    # Create radio buttons in a more compact layout
+    radio_frame = ttk.Frame(options_frame)
+    radio_frame.pack(fill="x", padx=2, pady=2)
+    
     ttk.Radiobutton(
-        options_frame, 
-        text="Copy effect with rendering", 
+        radio_frame, 
+        text="Copy with render", 
         variable=selected_option, 
         value=1
-    ).pack(anchor="w", padx=10, pady=5)
+    ).pack(side="left", padx=5)
     
     ttk.Radiobutton(
-        options_frame, 
-        text="Only copy effect without rendering", 
+        radio_frame, 
+        text="Copy only", 
         variable=selected_option, 
         value=2
-    ).pack(anchor="w", padx=10, pady=5)
+    ).pack(side="left", padx=5)
     
     ttk.Radiobutton(
-        options_frame, 
-        text="Render existing project", 
+        radio_frame, 
+        text="Render existing", 
         variable=selected_option, 
         value=3
-    ).pack(anchor="w", padx=10, pady=5)
+    ).pack(side="left", padx=5)
     
-    # Create status label
-    status_var = tk.StringVar(value="Ready")
-    status_label = ttk.Label(root, textvariable=status_var)
-    status_label.pack(pady=5)
+    # 4. Action buttons (left column)
+    action_frame = ttk.Frame(left_column)
+    action_frame.pack(padx=5, pady=5, fill="x")
     
-    # Create buttons frame
-    buttons_frame = ttk.Frame(root)
-    buttons_frame.pack(padx=10, pady=10, fill="x")
-    
-    # Create Start and Stop buttons
     start_button = ttk.Button(
-        buttons_frame, 
+        action_frame, 
         text="Start", 
         command=lambda: start_process(selected_option.get(), status_var, folder_var, text_widget)
     )
-    start_button.pack(side="left", padx=5, expand=True, fill="x")
+    start_button.pack(side="left", padx=2, expand=True, fill="x")
     
     stop_button = ttk.Button(
-        buttons_frame, 
+        action_frame, 
         text="Stop", 
         command=lambda: stop_process(status_var)
     )
-    stop_button.pack(side="left", padx=5, expand=True, fill="x")
+    stop_button.pack(side="left", padx=2, expand=True, fill="x")
     
     save_button = ttk.Button(
-        buttons_frame,
-        text="Save Settings",
+        action_frame,
+        text="Save",
         command=lambda: save_settings(folder_var, text_widget, status_var)
     )
-    save_button.pack(side="left", padx=5, expand=True, fill="x")
+    save_button.pack(side="left", padx=2, expand=True, fill="x")
+    
+    export_button = ttk.Button(
+        action_frame,
+        text="Export Projects",
+        command=lambda: create_project_selection_window(root, status_var)
+    )
+    export_button.pack(side="left", padx=2, expand=True, fill="x")
+    
+    # 5. Status area (right column, takes entire right side)
+    status_frame = ttk.LabelFrame(right_column, text="Status")
+    status_frame.pack(padx=5, pady=5, fill="both", expand=True)
+    
+    status_var = tk.StringVar(value="Ready")
+    status_text = tk.Text(status_frame, wrap="word")
+    status_text.pack(side="left", fill="both", expand=True, padx=2, pady=2)
+    
+    status_scrollbar = ttk.Scrollbar(status_frame, command=status_text.yview)
+    status_scrollbar.pack(side="right", fill="y")
+    status_text.config(yscrollcommand=status_scrollbar.set)
+    
+    # Custom setter for status_var to update Text widget
+    def set_status(value):
+        status_text.delete(1.0, tk.END)
+        status_text.insert(tk.END, value)
+        status_text.see(tk.END)  # Auto-scroll to the end
+    
+    status_var.set = set_status
+    set_status("Ready")
     
     # Load settings if available
     load_settings(folder_var, text_widget)
     
     return root, status_var, folder_var, text_widget
-
 # Main entry point
 if __name__ == "__main__":
     root, *_ = create_gui()
