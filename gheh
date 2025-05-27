@@ -1,26 +1,4 @@
-import os
-import json
-from moviepy.editor import VideoFileClip
-from datetime import datetime
-import shutil
-import re
-import time
-import random
-import string
-import pyperclip
-import pyautogui
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import threading
-import os
-import time
-import pyautogui
-import requests
-import subprocess
 
-# Chạy đoạn code này để khôi phục project từ backup
-import os
-import shutil
 
 # Đường dẫn đến thư mục project của CapCut
 capcut_path = os.getenv("LOCALAPPDATA") + r"\CapCut"
@@ -216,11 +194,11 @@ def export_video(status_var, project, result_folder=None):
                     return False
                 
                 # Bước 3: Di chuyển xuống 50px và click
-                pyautogui.moveTo(location)
-                pyautogui.mouseDown()  # Kéo chuột xuống 50px
-                click_x = location.x
-                click_y = location.y + 50
-                pyautogui.moveTo(click_x+200, click_y + 200, duration=0.5)  # Kéo xuống 50px
+                click_x = location.x + 100
+                click_y = location.y + 150
+                pyautogui.moveTo(click_x, click_y)  # Di chuyển đến vị trí ảnh
+                pyautogui.mouseDown()  # Giữ chuột xuống
+                pyautogui.moveTo(click_x+200, click_y+200, duration=0.5)  # Kéo xuống 50px
                 time.sleep(100000)  # Chờ một chút để CapCut cập nhật
                 status_var.set(f"{status_var.get()}\nClick vị trí ({click_x}, {click_y})")
                 pyautogui.doubleClick(click_x, click_y)
