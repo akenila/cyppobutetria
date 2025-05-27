@@ -15,10 +15,11 @@ def export_selected_projects(status_var, selected_projects):
         return
         
     # Create backup folder if it doesn't exist
-    backup_folder = os.path.join(os.path.dirname(projects_path), "project_backup")
+    backup_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "project_backup")
     if not os.path.exists(backup_folder):
         os.makedirs(backup_folder)
         status_var.set(f"Created backup folder: {backup_folder}")
+
     
     try:
         # Move all projects to backup folder first
@@ -36,8 +37,18 @@ def export_selected_projects(status_var, selected_projects):
                 
             # Move project to backup
             if os.path.exists(project_path):
-                shutil.move(project_path, backup_path)
-        
+                # Đảm bảo thư mục đích không tồn tại trước khi di chuyển
+                if os.path.exists(backup_path):
+                    shutil.rmtree(backup_path)
+                
+                try:
+                    # Dùng copy_tree rồi xóa nguồn thay vì move trực tiếp
+                    shutil.copytree(project_path, backup_path)
+                    shutil.rmtree(project_path)
+                    status_var.set(f"{status_var.get()}\nMoved: {project} to backup")
+                except Exception as e:
+                    status_var.set(f"{status_var.get()}\nError moving {project}: {str(e)}")
+        print(f"Moved {len(all_projects)} projects to backup")
         status_var.set(f"Moved {len(all_projects)} projects to backup")
         
         # Process each selected project
@@ -46,7 +57,7 @@ def export_selected_projects(status_var, selected_projects):
             if stop_requested:
                 status_var.set("Process stopped")
                 break
-                
+            print(f"Processing project: {project}")
             status_var.set(f"{status_var.get()}\nProcessing project: {project}")
             
             # Move the project from backup to main folder
@@ -59,6 +70,7 @@ def export_selected_projects(status_var, selected_projects):
                 
                 # Simulate exporting video (placeholder for your actual code)
                 export_video(status_var, project)
+                time.sleep(5)  # Simulate export time
                 
                 # Move the project back to backup after export
                 if os.path.exists(project_path):
@@ -84,22 +96,150 @@ def export_selected_projects(status_var, selected_projects):
         status_var.set(f"{status_var.get()}\nCompleted: {processed} projects exported")
         
     except Exception as e:
+        print(f"Error during export: {str(e)}")
         status_var.set(f"Error during export: {str(e)}")
 
 def export_video(status_var, project):
-    """Placeholder function for exporting video from a project"""
+    """Export video from a project"""
+    import os
+    import time
+    import pyautogui
+    import requests
+    import tempfile
+    import subprocess
+    
     status_var.set(f"{status_var.get()}\nExporting video for {project}...")
+    print(f"Exporting video for {project}...")
     
-    # Simulate export process
-    for i in range(3):
-        if stop_requested:
-            status_var.set(f"{status_var.get()}\nExport stopped")
-            return
-        time.sleep(1)
-        status_var.set(f"{status_var.get()}\nExport progress: {(i+1)*33}%")
-    
-    status_var.set(f"{status_var.get()}\nExport completed for {project}")
+    try:
+        # Bước 1: Mở CapCut
+        status_var.set(f"{status_var.get()}\nĐang mở CapCut...")
+        capcut_path = os.path.expandvars(r"%LOCALAPPDATA%\CapCut\Apps\CapCut.exe")
+        if not os.path.exists(capcut_path):
+            capcut_path = r"C:\Program Files\CapCut\CapCut.exe"
+        
+        if not os.path.exists(capcut_path):
+            status_var.set(f"{status_var.get()}\nKhông tìm thấy CapCut!")
+            return False
+            
+        subprocess.Popen(capcut_path)
+        time.sleep(5)  # Chờ CapCut khởi động
+        
+        # Bước 2: Tải ảnh từ URL và xác định vị trí
+        status_var.set(f"{status_var.get()}\nĐang tải ảnh tham chiếu...")
+        image_url = "https://raw.githubusercontent.com/akenila/cyppobutetria/refs/heads/main/project.png"  # Thay URL thực tế vào đây
+        
+        try:
+            # Tải ảnh từ URL
+            response = requests.get(image_url)
+            if response.status_code == 200:
+                temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                temp_file.write(response.content)
+                temp_file.close()
+                reference_image = temp_file.name
+                
+                # Tìm ảnh trên màn hình
+                status_var.set(f"{status_var.get()}\nĐang tìm ảnh tham chiếu trên màn hình...")
+                start_time = time.time()
+                location = None
+                
+                while time.time() - start_time < 30:  # Timeout 30 giây
+                    try:
+                        location = pyautogui.locateCenterOnScreen(reference_image, confidence=0.7)
+                        if location:
+                            break
+                    except Exception as e:
+                        status_var.set(f"{status_var.get()}\nLỗi khi tìm ảnh: {str(e)}")
+                    time.sleep(1)
+                
+                # Xóa file tạm
+                try:
+                    os.unlink(temp_file.name)
+                except:
+                    pass
+                
+                if not location:
+                    status_var.set(f"{status_var.get()}\nKhông tìm thấy ảnh tham chiếu trên màn hình")
+                    return False
+                
+                # Bước 3: Di chuyển xuống 50px và click
+                click_x = location.x
+                click_y = location.y + 70
+                status_var.set(f"{status_var.get()}\nClick vị trí ({click_x}, {click_y})")
+                pyautogui.click(click_x, click_y)
+                time.sleep(5)
+                
+                # Bước 4: Nhấn Ctrl+E để xuất
+                status_var.set(f"{status_var.get()}\nNhấn Ctrl+E để xuất video...")
+                pyautogui.hotkey('ctrl', 'e')
+                time.sleep(2)
+                pyautogui.press('enter')  # Nhấn Enter để xác nhận xuất
+                time.sleep(2)  # Chờ quá trình xuất bắt đầu
+                
+                # Bước 5: Theo dõi file mp4 được tải về
+                result_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Result")
+                if not os.path.exists(result_folder):
+                    os.makedirs(result_folder)
+                
+                status_var.set(f"{status_var.get()}\nĐang theo dõi file xuất trong {result_folder}...")
+                
+                # Lấy danh sách file ban đầu
+                initial_files = {f.lower(): os.path.getmtime(os.path.join(result_folder, f)) 
+                              for f in os.listdir(result_folder) if f.lower().endswith('.mp4')}
+                
+                export_complete = False
+                start_time = time.time()
+                found_file = None
+                last_size = -1
+                
+                while time.time() - start_time < 300:  # Timeout 5 phút
+                    current_files = {f.lower(): os.path.getmtime(os.path.join(result_folder, f)) 
+                                  for f in os.listdir(result_folder) if f.lower().endswith('.mp4')}
+                    
+                    # Tìm file mới nhất
+                    new_files = {f: t for f, t in current_files.items() if f not in initial_files or current_files[f] > initial_files.get(f, 0)}
+                    
+                    if new_files:
+                        newest_file = max(new_files.items(), key=lambda x: x[1])[0]
+                        file_path = os.path.join(result_folder, newest_file)
+                        current_size = os.path.getsize(file_path)
+                        
+                        if file_path == found_file:
+                            if current_size == last_size:  # Kích thước không đổi -> xuất xong
+                                status_var.set(f"{status_var.get()}\nFile đã xuất xong: {newest_file}")
+                                export_complete = True
+                                break
+                            else:
+                                print(f"File {newest_file} size changed: {current_size} bytes")
 
+                        
+                        found_file = file_path
+                        last_size = current_size
+                        status_var.set(f"{status_var.get()}\nĐang theo dõi: {newest_file} ({current_size} bytes)")
+                    
+                    time.sleep(2)
+                
+                # Bước 6: Đóng CapCut khi hoàn thành
+                status_var.set(f"{status_var.get()}\nĐang đóng CapCut...")
+                os.system("taskkill /f /im CapCut.exe")
+                
+                if export_complete:
+                    status_var.set(f"{status_var.get()}\nXuất video thành công: {os.path.basename(found_file)}")
+                    return True
+                else:
+                    status_var.set(f"{status_var.get()}\nXuất video thất bại hoặc hết thời gian chờ")
+                    return False
+            else:
+                status_var.set(f"{status_var.get()}\nKhông thể tải ảnh: HTTP {response.status_code}")
+                return False
+                
+        except Exception as e:
+            status_var.set(f"{status_var.get()}\nLỗi khi xử lý ảnh: {str(e)}")
+            return False
+            
+    except Exception as e:
+        status_var.set(f"{status_var.get()}\nLỗi khi xuất video: {str(e)}")
+        return False
 def create_project_selection_window(parent, status_var):
     """Create a window with checkboxes to select projects for export"""
     # Get list of projects
@@ -177,6 +317,7 @@ def create_project_selection_window(parent, status_var):
         # Start export process in a thread
         global current_process, stop_requested
         stop_requested = False
+        print(f"Starting export for {len(selected)} projects: {', '.join(selected)}")
         
         status_var.set(f"Starting export for {len(selected)} projects...")
         
