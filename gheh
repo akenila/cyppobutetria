@@ -1,28 +1,3 @@
-import os
-import json
-from moviepy.editor import VideoFileClip
-from datetime import datetime
-import shutil
-import re
-import time
-import random
-import string
-import pyperclip
-import pyautogui
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import threading
-import os
-import time
-import pyautogui
-import requests
-import subprocess
-
-# Chạy đoạn code này để khôi phục project từ backup
-import os
-import shutil
-
-# Đường dẫn đến thư mục project của CapCut
 capcut_path = os.getenv("LOCALAPPDATA") + r"\CapCut"
 projects_path = capcut_path + r"\User Data\Projects\com.lveditor.draft"
 
@@ -200,7 +175,7 @@ def export_video(status_var, project, result_folder=None):
                 start_time = time.time()
                 location = None
                 
-                while time.time() - start_time < 30:  # Timeout 30 giây
+                while time.time() - start_time < 40:  # Timeout 30 giây
                     try:
                         location = pyautogui.locateCenterOnScreen(reference_image, confidence=0.7)
                         if location:
@@ -221,7 +196,7 @@ def export_video(status_var, project, result_folder=None):
                 
                 # Bước 3: Di chuyển xuống 50px và click
                 click_x = location.x
-                click_y = location.y + 70
+                click_y = location.y + 50
                 status_var.set(f"{status_var.get()}\nClick vị trí ({click_x}, {click_y})")
                 pyautogui.click(click_x, click_y)
                 time.sleep(5)
