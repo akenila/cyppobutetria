@@ -1,3 +1,63 @@
+import os
+import json
+from moviepy.editor import VideoFileClip
+from datetime import datetime
+import shutil
+import re
+import time
+import random
+import string
+import pyperclip
+import pyautogui
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import threading
+import os
+import time
+import pyautogui
+import requests
+import subprocess
+
+# Chạy đoạn code này để khôi phục project từ backup
+import os
+import shutil
+
+# Đường dẫn đến thư mục project của CapCut
+capcut_path = os.getenv("LOCALAPPDATA") + r"\CapCut"
+projects_path = capcut_path + r"\User Data\Projects\com.lveditor.draft"
+
+# Đường dẫn đến thư mục backup
+backup_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "project_backup")
+
+if os.path.exists(backup_folder):
+    # Kiểm tra xem có project nào trong backup không
+    backup_projects = os.listdir(backup_folder)
+    if backup_projects:
+        print(f"Tìm thấy {len(backup_projects)} project trong backup, đang khôi phục...")
+        
+        # Di chuyển từng project từ backup về thư mục gốc
+        for project in backup_projects:
+            backup_path = os.path.join(backup_folder, project)
+            project_path = os.path.join(projects_path, project)
+            
+            try:
+                # Xóa project gốc nếu đã tồn tại (tránh conflict)
+                if os.path.exists(project_path):
+                    shutil.rmtree(project_path)
+                    
+                # Di chuyển project từ backup về
+                shutil.move(backup_path, project_path)
+                print(f"Đã khôi phục: {project}")
+            except Exception as e:
+                print(f"Lỗi khi khôi phục {project}: {str(e)}")
+
+        print("Hoàn tất khôi phục project!")
+    else:
+        print("Không tìm thấy project nào trong thư mục backup!")
+else:
+    print(f"Không tìm thấy thư mục backup tại: {backup_folder}")
+
+# Global variables for process control
 stop_requested = False
 current_process = None
 
@@ -956,6 +1016,50 @@ def create_gui():
         command=lambda: create_project_selection_window(root, status_var, result_folder_var)
     )
     export_button.pack(side="left", padx=2, expand=True, fill="x")
+    # Thêm vào action_frame trong hàm create_gui()
+
+    restore_button = ttk.Button(
+        action_frame,
+        text="Khôi phục Project",
+        command=lambda: restore_projects_from_backup(status_var)
+    )
+    restore_button.pack(side="left", padx=2, expand=True, fill="x")
+
+    # Thêm hàm này vào chương trình
+    def restore_projects_from_backup(status_var):
+        """Khôi phục project từ thư mục backup về thư mục gốc"""
+        try:
+            _, projects_path = get_projects_from_path()
+            if not projects_path:
+                status_var.set("Không tìm thấy đường dẫn project")
+                return
+                
+            backup_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "project_backup")
+            if not os.path.exists(backup_folder):
+                status_var.set("Không tìm thấy thư mục backup")
+                return
+                
+            backup_projects = os.listdir(backup_folder)
+            if not backup_projects:
+                status_var.set("Không có project nào trong thư mục backup")
+                return
+                
+            status_var.set(f"Đang khôi phục {len(backup_projects)} project từ backup...")
+            
+            for project in backup_projects:
+                backup_path = os.path.join(backup_folder, project)
+                project_path = os.path.join(projects_path, project)
+                
+                # Move project back to main folder
+                if os.path.exists(backup_path):
+                    if os.path.exists(project_path):
+                        shutil.rmtree(project_path)
+                    shutil.move(backup_path, project_path)
+                    status_var.set(f"{status_var.get()}\nĐã khôi phục: {project}")
+            
+            status_var.set(f"{status_var.get()}\nHoàn tất khôi phục {len(backup_projects)} project!")
+        except Exception as e:
+            status_var.set(f"Lỗi khi khôi phục project: {str(e)}")
     
     # 5. Status area (right column, takes entire right side)
     status_frame = ttk.LabelFrame(right_column, text="Status")
