@@ -2,8 +2,7 @@ stop_requested = False
 current_process = None
 
 
-def export_selected_projects(status_var, selected_projects):
-    """Export selected projects one by one with backup management"""
+def export_selected_projects(status_var, selected_projects, result_folder_var=None):
     if not selected_projects:
         status_var.set("No projects selected for export")
         return
@@ -69,7 +68,9 @@ def export_selected_projects(status_var, selected_projects):
                 status_var.set(f"{status_var.get()}\nMoved {project} to main folder")
                 
                 # Simulate exporting video (placeholder for your actual code)
-                export_video(status_var, project)
+                result_folder = result_folder_var.get()
+                export_video(status_var, project, result_folder)
+
                 time.sleep(5)  # Simulate export time
                 
                 # Move the project back to backup after export
@@ -99,14 +100,8 @@ def export_selected_projects(status_var, selected_projects):
         print(f"Error during export: {str(e)}")
         status_var.set(f"Error during export: {str(e)}")
 
-def export_video(status_var, project):
+def export_video(status_var, project, result_folder=None):
     """Export video from a project"""
-    import os
-    import time
-    import pyautogui
-    import requests
-    import tempfile
-    import subprocess
     
     status_var.set(f"{status_var.get()}\nExporting video for {project}...")
     print(f"Exporting video for {project}...")
@@ -133,10 +128,12 @@ def export_video(status_var, project):
             # Tải ảnh từ URL
             response = requests.get(image_url)
             if response.status_code == 200:
-                temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-                temp_file.write(response.content)
-                temp_file.close()
-                reference_image = temp_file.name
+                timestamp = int(time.time())
+                random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+                reference_image = f"temp_image_{timestamp}_{random_str}.png"
+                with open(reference_image, 'wb') as f:
+                    f.write(response.content)
+        
                 
                 # Tìm ảnh trên màn hình
                 status_var.set(f"{status_var.get()}\nĐang tìm ảnh tham chiếu trên màn hình...")
@@ -154,7 +151,7 @@ def export_video(status_var, project):
                 
                 # Xóa file tạm
                 try:
-                    os.unlink(temp_file.name)
+                    os.remove(reference_image)
                 except:
                     pass
                 
@@ -175,12 +172,55 @@ def export_video(status_var, project):
                 time.sleep(2)
                 pyautogui.press('enter')  # Nhấn Enter để xác nhận xuất
                 time.sleep(2)  # Chờ quá trình xuất bắt đầu
+                # Bước 4.1: Tải ảnh xác nhận thứ hai và kiểm tra
+                status_var.set(f"{status_var.get()}\nĐang tải ảnh xác nhận thứ hai...")
+                confirm_image_url = "https://raw.githubusercontent.com/akenila/cyppobutetria/refs/heads/main/checking.png"  # Thay bằng URL ảnh xác nhận thực tế
+
+                try:
+                    # Tải ảnh từ URL
+                    confirm_response = requests.get(confirm_image_url)
+                    if confirm_response.status_code == 200:
+                        confirm_timestamp = int(time.time())
+                        confirm_random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+                        confirm_reference_image = f"confirm_image_{confirm_timestamp}_{confirm_random_str}.png"
+                        
+                        with open(confirm_reference_image, 'wb') as f:
+                            f.write(confirm_response.content)
+                        
+                        # Tìm ảnh trên màn hình với timeout ngắn (3 giây)
+                        status_var.set(f"{status_var.get()}\nĐang tìm ảnh xác nhận...")
+                        confirm_start_time = time.time()
+                        confirm_location = None
+                        
+                        while time.time() - confirm_start_time < 2:  # Timeout 3 giây
+                            try:
+                                confirm_location = pyautogui.locateCenterOnScreen(confirm_reference_image, confidence=0.7)
+                                if confirm_location:
+                                    break
+                            except Exception as e:
+                                pass
+                            time.sleep(0.5)
+                        
+                        # Xử lý nếu tìm thấy
+                        if confirm_location:
+                            status_var.set(f"{status_var.get()}\nTìm thấy ảnh xác nhận, nhấn vào nó...")
+                            pyautogui.click(confirm_location.x, confirm_location.y)
+                            time.sleep(1)
+                        
+                        # Xóa file tạm
+                        try:
+                            os.remove(confirm_reference_image)
+                        except:
+                            pass
+                except Exception as e:
+                    status_var.set(f"{status_var.get()}\nLỗi khi xử lý ảnh xác nhận: {str(e)}")
                 
                 # Bước 5: Theo dõi file mp4 được tải về
-                result_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Result")
+                if not result_folder:
+                    result_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Result")
                 if not os.path.exists(result_folder):
                     os.makedirs(result_folder)
-                
+                print(f"Result folder: {result_folder}")
                 status_var.set(f"{status_var.get()}\nĐang theo dõi file xuất trong {result_folder}...")
                 
                 # Lấy danh sách file ban đầu
@@ -240,9 +280,8 @@ def export_video(status_var, project):
     except Exception as e:
         status_var.set(f"{status_var.get()}\nLỗi khi xuất video: {str(e)}")
         return False
-def create_project_selection_window(parent, status_var):
+def create_project_selection_window(parent, status_var, result_folder_var):
     """Create a window with checkboxes to select projects for export"""
-    # Get list of projects
     projects, _ = get_projects_from_path()
     if not projects:
         messagebox.showinfo("Info", "No projects found")
@@ -323,7 +362,7 @@ def create_project_selection_window(parent, status_var):
         
         current_process = threading.Thread(
             target=export_selected_projects,
-            args=(status_var, selected)
+            args=(status_var, selected, result_folder_var)
         )
         current_process.daemon = True
         current_process.start()
@@ -374,7 +413,7 @@ def validate_input_format(input_text):
             return False
     return True
 
-def save_settings(folder_var, text_widget, status_var):
+def save_settings(folder_var, result_folder_var, text_widget, status_var):
     """Save current settings to a file"""
     try:
         input_text = text_widget.get('1.0', tk.END).strip()
@@ -388,6 +427,7 @@ def save_settings(folder_var, text_widget, status_var):
         # Create settings dictionary with folder path and input text
         settings = {
             'folder_path': folder_var.get(),
+            'result_folder_path': result_folder_var.get(),
             'input_text': input_text
         }
         
@@ -400,7 +440,7 @@ def save_settings(folder_var, text_widget, status_var):
         status_var.set(f"Error saving settings: {str(e)}")
         messagebox.showerror("Error", f"Failed to save settings: {str(e)}")
 
-def load_settings(folder_var, text_widget):
+def load_settings(folder_var, result_folder_var, text_widget):
     """Load settings from file if it exists"""
     try:
         if os.path.exists('capcut_settings.json'):
@@ -410,6 +450,10 @@ def load_settings(folder_var, text_widget):
             # Load folder path if it exists in settings
             if 'folder_path' in settings:
                 folder_var.set(settings.get('folder_path', ''))
+            
+            # Load result folder path if it exists
+            if 'result_folder_path' in settings:
+                result_folder_var.set(settings.get('result_folder_path', ''))
             
             # Load input text if it exists in settings
             if 'input_text' in settings:
@@ -422,7 +466,7 @@ def load_settings(folder_var, text_widget):
         print(f"Error loading settings: {str(e)}")
         return False
 
-def copy_effect_with_render(status_var, folder_path=None, input_text=None):
+def copy_effect_with_render(status_var, folder_path=None, input_text=None, result_folder_var=None):
     """Copy effect with rendering"""
     projects, projects_path = get_projects_from_path()
     if not projects:
@@ -436,6 +480,12 @@ def copy_effect_with_render(status_var, folder_path=None, input_text=None):
     if not input_text:
         status_var.set("No input text specified")
         return
+    
+    # Create backup folder if it doesn't exist
+    backup_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "project_backup")
+    if not os.path.exists(backup_folder):
+        os.makedirs(backup_folder)
+        status_var.set(f"Created backup folder: {backup_folder}")
         
     status_var.set(f"Copying effect with rendering... Searching videos in: {folder_path}")
     
@@ -460,6 +510,35 @@ def copy_effect_with_render(status_var, folder_path=None, input_text=None):
         status_var.set(f"No video files found in {folder_path}")
         return
     
+    # Move all projects to backup folder first
+    status_var.set("Moving all projects to backup folder...")
+    all_projects = [p for p in os.listdir(projects_path) 
+                   if p not in ['.recycle_bin', 'root_meta_info.json']]
+    
+    # First, backup all projects
+    for project in all_projects:
+        project_path = os.path.join(projects_path, project)
+        backup_path = os.path.join(backup_folder, project)
+        
+        # Skip if project already in backup
+        if os.path.exists(backup_path):
+            continue
+            
+        # Move project to backup
+        if os.path.exists(project_path):
+            # Đảm bảo thư mục đích không tồn tại trước khi di chuyển
+            if os.path.exists(backup_path):
+                shutil.rmtree(backup_path)
+            
+            try:
+                # Dùng copy_tree rồi xóa nguồn thay vì move trực tiếp
+                shutil.copytree(project_path, backup_path)
+                shutil.rmtree(project_path)
+                status_var.set(f"{status_var.get()}\nMoved: {project} to backup")
+            except Exception as e:
+                status_var.set(f"{status_var.get()}\nError moving {project}: {str(e)}")
+    status_var.set(f"Moved {len(all_projects)} projects to backup")
+    
     processed = 0
     status_var.set(f"Found {len(video_files)} videos and {len(pairs)} key:value pairs to process")
     
@@ -467,7 +546,7 @@ def copy_effect_with_render(status_var, folder_path=None, input_text=None):
     for key, value in pairs.items():
         if stop_requested:
             status_var.set("Process stopped")
-            return
+            break
             
         # Find videos with key in filename
         matching_videos = [v for v in video_files if key.lower() in v.lower()]
@@ -488,6 +567,14 @@ def copy_effect_with_render(status_var, folder_path=None, input_text=None):
         project_name = matching_projects[0]
         
         try:
+            # Move the project from backup to main folder
+            backup_path = os.path.join(backup_folder, project_name)
+            project_folder_path = os.path.join(projects_path, project_name)
+            
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, project_folder_path)
+                status_var.set(f"{status_var.get()}\nMoved {project_name} to main folder")
+            
             # Get video information
             status_var.set(f"{status_var.get()}\nProcessing: '{key}' → '{value}'")
             video_info = get_video_info(video_path)
@@ -503,7 +590,7 @@ def copy_effect_with_render(status_var, folder_path=None, input_text=None):
             with open(project_path, 'r', encoding='utf-8') as f:
                 project_data = json.load(f)
                 
-            # Update project with video info (similar to coppy.py)
+            # Update project with video info
             duration = video_info["duration"]
             width = video_info["width"]
             height = video_info["height"]
@@ -529,17 +616,39 @@ def copy_effect_with_render(status_var, folder_path=None, input_text=None):
             with open(project_path, 'w', encoding='utf-8') as f:
                 json.dump(project_data, f, indent=4, ensure_ascii=False)
                 
-            processed += 1
             status_var.set(f"{status_var.get()}\nApplied effects to {project_name} with video {os.path.basename(video_path)}")
             
-            # Add rendering code here for copy_effect_with_render
-            time.sleep(1)  # Simulate rendering time
+            # Render the video
+            result_folder = result_folder_var.get() if result_folder_var else None
+            export_video(status_var, project_name, result_folder)
+            
+            # Move project back to backup after export
+            if os.path.exists(project_folder_path):
+                if os.path.exists(backup_path):
+                    shutil.rmtree(backup_path)
+                shutil.move(project_folder_path, backup_path)
+                status_var.set(f"{status_var.get()}\nMoved {project_name} back to backup")
+            
+            processed += 1
             
         except Exception as e:
             status_var.set(f"{status_var.get()}\nError processing {key}:{value} - {str(e)}")
-            
+    
+    # After all exports, move all projects back to main folder
+    status_var.set(f"{status_var.get()}\nMoving all projects back to main folder...")
+    backup_projects = os.listdir(backup_folder)
+    
+    for project in backup_projects:
+        backup_path = os.path.join(backup_folder, project)
+        project_path = os.path.join(projects_path, project)
+        
+        # Move project back to main folder
+        if os.path.exists(backup_path):
+            if os.path.exists(project_path):
+                shutil.rmtree(project_path)
+            shutil.move(backup_path, project_path)
+    
     status_var.set(f"{status_var.get()}\nCompleted: {processed} projects processed with rendering")
-
 def copy_effect_only(status_var, folder_path=None, input_text=None):
     """Copy effect without rendering"""
     projects, projects_path = get_projects_from_path()
@@ -676,25 +785,9 @@ def get_video_info(mp4_path):
     except Exception as e:
         print(f"Error processing video file: {e}")
         return None
-def render_existing_project(status_var, folder_path=None, input_text=None):
-    """Render existing project"""
-    projects, projects_path = get_projects_from_path()
-    if not projects:
-        status_var.set("No projects found")
-        return
-    
-    # Use the folder path and input text
-    status_var.set(f"Rendering existing project... Folder: {folder_path}, Input: {input_text}")
-    
-    # Simulating work
-    for i in range(5):
-        if stop_requested:
-            status_var.set("Process stopped")
-            return
-        time.sleep(1)
-    status_var.set("Rendering completed")
 
-def start_process(option, status_var, folder_var, text_widget):
+
+def start_process(option, status_var, folder_var, text_widget, result_folder_var=None):
     global stop_requested, current_process
     
     # Reset stop flag
@@ -716,16 +809,11 @@ def start_process(option, status_var, folder_var, text_widget):
     if option == 1:
         current_process = threading.Thread(
             target=copy_effect_with_render, 
-            args=(status_var, folder_path, input_text)
+            args=(status_var, folder_path, input_text, result_folder_var)
         )
     elif option == 2:
         current_process = threading.Thread(
             target=copy_effect_only, 
-            args=(status_var, folder_path, input_text)
-        )
-    elif option == 3:
-        current_process = threading.Thread(
-            target=render_existing_project, 
             args=(status_var, folder_path, input_text)
         )
         
@@ -769,6 +857,22 @@ def create_gui():
         command=lambda: select_folder(folder_var)
     )
     browse_button.pack(side="right", padx=2, pady=2)
+    
+    # Thêm Result Folder frame
+    result_folder_frame = ttk.LabelFrame(left_column, text="Result Folder")
+    result_folder_frame.pack(padx=5, pady=5, fill="x")
+    
+    result_folder_var = tk.StringVar()
+    result_folder_entry = ttk.Entry(result_folder_frame, textvariable=result_folder_var)
+    result_folder_entry.pack(side="left", padx=2, pady=2, fill="x", expand=True)
+    
+    result_browse_button = ttk.Button(
+        result_folder_frame,
+        text="Browse...",
+        command=lambda: select_folder(result_folder_var)
+    )
+    result_browse_button.pack(side="right", padx=2, pady=2)
+    
     
     # 2. Input text frame (left column)
     input_frame = ttk.LabelFrame(left_column, text="Key:Value Pairs")
@@ -820,12 +924,6 @@ def create_gui():
         value=2
     ).pack(side="left", padx=5)
     
-    ttk.Radiobutton(
-        radio_frame, 
-        text="Render existing", 
-        variable=selected_option, 
-        value=3
-    ).pack(side="left", padx=5)
     
     # 4. Action buttons (left column)
     action_frame = ttk.Frame(left_column)
@@ -834,7 +932,7 @@ def create_gui():
     start_button = ttk.Button(
         action_frame, 
         text="Start", 
-        command=lambda: start_process(selected_option.get(), status_var, folder_var, text_widget)
+        command=lambda: start_process(selected_option.get(), status_var, folder_var, text_widget, result_folder_var)
     )
     start_button.pack(side="left", padx=2, expand=True, fill="x")
     
@@ -848,14 +946,14 @@ def create_gui():
     save_button = ttk.Button(
         action_frame,
         text="Save",
-        command=lambda: save_settings(folder_var, text_widget, status_var)
+        command=lambda: save_settings(folder_var, result_folder_var, text_widget, status_var)
     )
     save_button.pack(side="left", padx=2, expand=True, fill="x")
     
     export_button = ttk.Button(
         action_frame,
         text="Export Projects",
-        command=lambda: create_project_selection_window(root, status_var)
+        command=lambda: create_project_selection_window(root, status_var, result_folder_var)
     )
     export_button.pack(side="left", padx=2, expand=True, fill="x")
     
@@ -881,9 +979,9 @@ def create_gui():
     set_status("Ready")
     
     # Load settings if available
-    load_settings(folder_var, text_widget)
+    load_settings(folder_var, result_folder_var, text_widget)
     
-    return root, status_var, folder_var, text_widget
+    return root, status_var, folder_var, result_folder_var, text_widget
 # Main entry point
 if __name__ == "__main__":
     root, *_ = create_gui()
