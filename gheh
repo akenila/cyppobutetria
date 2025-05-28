@@ -1,4 +1,3 @@
-
 # Đường dẫn đến thư mục project của CapCut
 capcut_path = os.getenv("LOCALAPPDATA") + r"\CapCut"
 projects_path = capcut_path + r"\User Data\Projects\com.lveditor.draft"
@@ -193,8 +192,8 @@ def export_video(status_var, project, result_folder=None):
                     return False
                 
                 # Bước 3: Di chuyển xuống 50px và click
-                click_x = location.x
-                click_y = location.y + 70
+                click_x = location.x + 80
+                click_y = location.y + 130
                 status_var.set(f"{status_var.get()}\nClick vị trí ({click_x}, {click_y})")
                 pyautogui.doubleClick(click_x, click_y)
                 try:
@@ -203,6 +202,8 @@ def export_video(status_var, project, result_folder=None):
                     pass
 
                 time.sleep(5)
+                pyautogui.press('esc')
+                time.sleep(3)
                 
                 # Bước 4: Nhấn Ctrl+E để xuất
                 status_var.set(f"{status_var.get()}\nNhấn Ctrl+E để xuất video...")
