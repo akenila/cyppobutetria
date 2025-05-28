@@ -192,8 +192,8 @@ def export_video(status_var, project, result_folder=None):
                     return False
                 
                 # Bước 3: Di chuyển xuống 50px và click
-                click_x = location.x + 80
-                click_y = location.y + 130
+                click_x = location.x
+                click_y = location.y + 60
                 status_var.set(f"{status_var.get()}\nClick vị trí ({click_x}, {click_y})")
                 pyautogui.doubleClick(click_x, click_y)
                 try:
